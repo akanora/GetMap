@@ -12,6 +12,7 @@ Convar gCV_MapsPath = null;
 Convar gCV_FastDLPath = null;
 Convar gCV_ReplaceMap = null;
 Convar gCV_MapPrefix = null;
+Convar gCV_DeleteBZ2After = null;
 
 char gS_PublicURL[PLATFORM_MAX_PATH];
 char gS_MapPath[PLATFORM_MAX_PATH];
@@ -19,8 +20,6 @@ char gS_FastDLPath[PLATFORM_MAX_PATH];
 char gS_MapPrefix[16];
 
 HTTPClient gHC_HttpClient = null;
-
-// Timer Settings
 chatstrings_t gS_ChatStrings;
 
 public Plugin myinfo =
@@ -28,9 +27,9 @@ public Plugin myinfo =
 	name = "GetMap",
 	author = "BoomShot / Nora",
 	description = "Allows a user with !map privileges to download a map while in-game.",
-	version = "1.2.1",
+	version = "1.2.2",
 	url = "https://github.com/akanora/GetMap"
-}
+};
 
 public void OnPluginStart()
 {
@@ -40,17 +39,18 @@ public void OnPluginStart()
 	RegAdminCmd("sm_delmap", Command_DeleteMap, ADMFLAG_CHANGEMAP, "Delete a map (.bsp and optionally .bz2) from the server.");
 
 	gCV_PublicURL = new Convar("gm_public_url", "https://main.fastdl.me/maps/", "Replace with a public FastDL URL containing maps for your respective game, the default one is for (cstrike).");
-	gCV_MapsPath = new Convar("gm_maps_path", "maps/", "Path to where the decompressed map file will go to. If blank, it'll be the game's folder (cstrike, csgo, tf, etc.)");
-	gCV_FastDLPath = new Convar("gm_fastdl_path", "maps/", "Path to where the compressed map file will go to. If blank, it'll be the game's folder (cstrike, csgo, tf, etc.)");
+	gCV_MapsPath = new Convar("gm_maps_path", "maps/", "Path to where the decompressed map file will go to.");
+	gCV_FastDLPath = new Convar("gm_fastdl_path", "maps/", "Path to where the compressed map file will go to.");
 	gCV_ReplaceMap = new Convar("gm_replace_map", "0", "Specifies whether or not to replace the map if it already exists.", _, true, 0.0, true, 1.0);
-	gCV_MapPrefix = new Convar("gm_map_prefix", "", "Use map prefix before every map name when using the command, for example using a prefix of \"bhop_\", sm_getmap arcane, would search for bhop_arcane");
+	gCV_MapPrefix = new Convar("gm_map_prefix", "", "Use map prefix before every map name.");
+	gCV_DeleteBZ2After = new Convar("gm_delete_bz2_after", "1", "Whether to delete the .bz2 after decompressing it.", _, true, 0.0, true, 1.0);
 
 	AutoExecConfig();
 }
 
 public void Shavit_OnChatConfigLoaded()
 {
-    Shavit_GetChatStringsStruct(gS_ChatStrings);
+	Shavit_GetChatStringsStruct(gS_ChatStrings);
 }
 
 public Action Command_GetMap(int client, int args)
@@ -58,7 +58,6 @@ public Action Command_GetMap(int client, int args)
 	if(args < 1)
 	{
 		Shavit_PrintToChat(client, "Usage: sm_getmap <mapname>");
-
 		return Plugin_Handled;
 	}
 
@@ -68,7 +67,6 @@ public Action Command_GetMap(int client, int args)
 	if(mapName[0] == '\0')
 	{
 		Shavit_PrintToChat(client, "Usage: sm_getmap <mapname>");
-
 		return Plugin_Handled;
 	}
 
@@ -80,30 +78,25 @@ public Action Command_GetMap(int client, int args)
 	if(gS_PublicURL[0] == '\0')
 	{
 		Shavit_PrintToChat(client, "Invalid public URL path, please update cvar: gm_public_url");
-
 		return Plugin_Handled;
 	}
 	else if(!FormatOutputPath(gS_MapPath, sizeof(gS_MapPath), gS_MapPrefix, mapName, ".bsp"))
 	{
 		Shavit_PrintToChat(client, "Invalid maps path, please update cvar: gm_maps_path");
-
 		return Plugin_Handled;
 	}
 	else if(!FormatOutputPath(gS_FastDLPath, sizeof(gS_FastDLPath), gS_MapPrefix, mapName, ".bsp.bz2"))
 	{
 		Shavit_PrintToChat(client, "Invalid fastdl path, please update cvar: gm_fastdl_path");
-
 		return Plugin_Handled;
 	}
 	else if((FileExists(gS_MapPath) || FileExists(gS_FastDLPath)) && !gCV_ReplaceMap.BoolValue)
 	{
-		Shavit_PrintToChat(client, "Map already exists in maps or fastdl folder! To allow replacing, use the cvar: gm_replace_map or edit the plugin's cfg file.");
-
+		Shavit_PrintToChat(client, "Map already exists! Use gm_replace_map to allow overwriting.");
 		return Plugin_Handled;
 	}
 
 	char endPoint[PLATFORM_MAX_PATH];
-
 	if(StrContains(mapName, gS_MapPrefix, false) == -1)
 	{
 		Format(endPoint, sizeof(endPoint), "%s%s.bsp.bz2", gS_MapPrefix, mapName);
@@ -156,7 +149,6 @@ public Action Command_DeleteMap(int client, int args)
 		return Plugin_Handled;
 	}
 
-	// For nav file (usually in the maps/ directory)
 	strcopy(navPath, sizeof(navPath), bspPath);
 	ReplaceString(navPath, sizeof(navPath), ".bsp", ".nav", false);
 
@@ -195,12 +187,9 @@ bool FormatOutputPath(char[] path, int maxlen, char[] prefix, const char[] mapNa
 	char temp[PLATFORM_MAX_PATH];
 	strcopy(temp, sizeof(temp), path);
 
-	if(prefix[0] != '\0')
+	if(prefix[0] != '\0' && prefix[strlen(prefix) - 1] != '_')
 	{
-		if(prefix[strlen(prefix) - 1] != '_')
-		{
-			StrCat(prefix, sizeof(gS_MapPrefix), "_");
-		}
+		StrCat(prefix, sizeof(gS_MapPrefix), "_");
 	}
 
 	if(StrContains(mapName, prefix, false) == -1)
@@ -224,6 +213,7 @@ void OnMapFileDownloaded(HTTPStatus status, DataPack data)
 
 	char mapName[PLATFORM_MAX_PATH];
 	data.ReadString(mapName, sizeof(mapName));
+
 	if(status != HTTPStatus_OK)
 	{
 		LogError("GetMap: Failed to download %s: HTTPStatus (%d)", mapName, status);
@@ -235,12 +225,10 @@ void OnMapFileDownloaded(HTTPStatus status, DataPack data)
 		}
 
 		delete data;
-
 		return;
 	}
 
 	Shavit_PrintToChat(client, "%sDecompressing map file, please wait...", gS_ChatStrings.sText);
-
 	BZ2_DecompressFile(gS_FastDLPath, gS_MapPath, OnDecompressFile, data);
 }
 
@@ -259,17 +247,18 @@ void OnDecompressFile(BZ_Error iError, char[] inFile, char[] outFile, DataPack d
 	{
 		LogError("GetMap: Failed to decompress %s: BZ_Error (%d)", inFile, iError);
 		Shavit_PrintToChat(client, "%sFailed to decompress %s%s%s: BZ_Error (%s%d%s)", gS_ChatStrings.sText, gS_ChatStrings.sVariable, inFile, gS_ChatStrings.sText, gS_ChatStrings.sVariable, iError, gS_ChatStrings.sText);
-
 		return;
 	}
 
-	if(StrContains(gS_MapPath, gS_FastDLPath))
+	if(gCV_DeleteBZ2After.BoolValue && FileExists(gS_FastDLPath))
 	{
-		Shavit_PrintToChat(client, "%sCompressed and Decompressed file in same location, deleting compressed file. Ignore if using third party FastDL.", gS_ChatStrings.sText);
-		if(FileExists(gS_FastDLPath))
+		if(DeleteFile(gS_FastDLPath))
 		{
-			DeleteFile(gS_FastDLPath);
-			Shavit_PrintToChat(client, "%sDeleted %s%s", gS_ChatStrings.sText, gS_ChatStrings.sVariable, gS_FastDLPath);
+			Shavit_PrintToChat(client, "%sDeleted compressed file: %s%s", gS_ChatStrings.sText, gS_ChatStrings.sVariable, gS_FastDLPath);
+		}
+		else
+		{
+			Shavit_PrintToChat(client, "%sFailed to delete compressed file: %s%s", gS_ChatStrings.sText, gS_ChatStrings.sVariable, gS_FastDLPath);
 		}
 	}
 

@@ -11,6 +11,7 @@ Convar gCV_MapsPath = null;
 Convar gCV_FastDLPath = null;
 Convar gCV_ReplaceMap = null;
 Convar gCV_MapPrefix = null;
+Convar gCV_DeleteBZ2After = null;
 
 char gS_PublicURL[PLATFORM_MAX_PATH];
 char gS_MapPath[PLATFORM_MAX_PATH];
@@ -24,7 +25,7 @@ public Plugin myinfo =
 	name = "GetMap",
 	author = "BoomShot / Nora",
 	description = "Allows a user with !map privileges to download a map while in-game.",
-	version = "1.2.1",
+	version = "1.2.2",
 	url = "https://github.com/akanora/GetMap"
 }
 
@@ -36,8 +37,8 @@ public void OnPluginStart()
 	RegAdminCmd("sm_delmap", Command_DeleteMap, ADMFLAG_CHANGEMAP, "Delete a map (.bsp and optionally .bz2) from the server.");
 
 	gCV_PublicURL = new Convar("gm_public_url", "https://main.fastdl.me/maps/", "Replace with a public FastDL URL containing maps for your respective game, the default one is for (cstrike).");
-	gCV_MapsPath = new Convar("gm_maps_path", "maps/", "Path to where the decompressed map file will go to. If blank, it'll be the game's folder (cstrike, csgo, tf, etc.)");
-	gCV_FastDLPath = new Convar("gm_fastdl_path", "maps/", "Path to where the compressed map file will go to. If blank, it'll be the game's folder (cstrike, csgo, tf, etc.)");
+	gCV_MapsPath = new Convar("gm_maps_path", "maps/", "Path to where the decompressed map file will go to.");
+	gCV_FastDLPath = new Convar("gm_fastdl_path", "maps/", "Path to where the compressed map file will go to.");
 	gCV_ReplaceMap = new Convar("gm_replace_map", "0", "Specifies whether or not to replace the map if it already exists.", _, true, 0.0, true, 1.0);
 	gCV_MapPrefix = new Convar("gm_map_prefix", "", "Use map prefix before every map name when using the command, for example using a prefix of \"bhop_\", sm_getmap arcane, would search for bhop_arcane");
 
@@ -88,7 +89,7 @@ public Action Command_GetMap(int client, int args)
 	}
 	else if((FileExists(gS_MapPath) || FileExists(gS_FastDLPath)) && !gCV_ReplaceMap.BoolValue)
 	{
-		ReplyToCommand(client, "Map already exists in maps or fastdl folder! To allow replacing, use the cvar: gm_replace_map or edit the plugin's cfg file.");
+		ReplyToCommand(client, "Map already exists! Use gm_replace_map to allow overwriting.");
 
 		return Plugin_Handled;
 	}
@@ -186,12 +187,9 @@ bool FormatOutputPath(char[] path, int maxlen, char[] prefix, const char[] mapNa
 	char temp[PLATFORM_MAX_PATH];
 	strcopy(temp, sizeof(temp), path);
 
-	if(prefix[0] != '\0')
+	if(prefix[0] != '\0' && prefix[strlen(prefix) - 1] != '_')
 	{
-		if(prefix[strlen(prefix) - 1] != '_')
-		{
-			StrCat(prefix, sizeof(gS_MapPrefix), "_");
-		}
+		StrCat(prefix, sizeof(gS_MapPrefix), "_");
 	}
 
 	if(StrContains(mapName, prefix, false) == -1)
@@ -254,13 +252,13 @@ void OnDecompressFile(BZ_Error iError, char[] inFile, char[] outFile, DataPack d
 		return;
 	}
 
-	if(StrContains(gS_MapPath, gS_FastDLPath))
+	if(gCV_DeleteBZ2After.BoolValue && FileExists(gS_FastDLPath))
 	{
 		PrintToChat(client, "GetMap: Compressed and Decompressed file in same location, deleting compressed file. Ignore if using third party FastDL.");
-		if(FileExists(gS_FastDLPath))
+		if(DeleteFile(gS_FastDLPath))
 		{
 			DeleteFile(gS_FastDLPath);
-			PrintToChat(client, "GetMap: Deleted %s", gS_FastDLPath);
+			PrintToChat(client, "Deleted compressed file: %s", gS_FastDLPath);
 		}
 	}
 
